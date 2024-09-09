@@ -1,7 +1,11 @@
 <template>
-  <div id="map" style="height: 800px;"></div>
+  <div>
+    <div id="map" style="height: 800px;"></div>
+    <div id="distance">
+      <h3>Distance totale parcourue : {{ totalDistance.toFixed(2) }} km</h3>
+    </div>
+  </div>
 </template>
-
 
 <script>
 import L from 'leaflet';
@@ -9,6 +13,11 @@ import 'leaflet/dist/leaflet.css';
 
 export default {
   name: 'MapComponent',
+  data() {
+    return {
+      totalDistance: 0 // Initialisation de la distance totale
+    };
+  },
   methods: {
     // Méthode pour calculer la distance haversine entre deux coordonnées GPS
     haversineDistance(coord1, coord2) {
@@ -43,16 +52,49 @@ export default {
     // Méthode pour générer le polyligne du chemin
     generatePath(map, path) {
       path.forEach((segment, index) => {
-        const [start, end] = segment;
+        const [start, end, distance] = segment;
+
+        // Ajouter la polyline pour chaque segment du chemin
+        const polyline = L.polyline([start, end], { color: 'blue' }).addTo(map);
+
+        // Afficher la distance sur la polyline
+        polyline.bindPopup(`Distance: ${distance.toFixed(2)} km`).openPopup();
+
         L.marker(end, {
           icon: L.icon({
             iconUrl: 'https://leafletjs.com/examples/custom-icons/leaf-green.png',
             shadowUrl: 'https://leafletjs.com/examples/custom-icons/leaf-shadow.png'
           })
         }).addTo(map).bindPopup(`<b>Point ${index + 1}</b>`);
-
-        L.polyline([start, end], { color: 'blue' }).addTo(map);
       });
+    },
+    // Méthode pour obtenir la distance totale d'un chemin
+    getTotalDistance(path) {
+      return path.reduce((total, [start, end, distance]) => total + distance, 0);
+    },
+    // Méthode pour effectuer un swap 2-opt et retourner la nouvelle version du chemin
+    twoOptSwap(route, i, k) {
+      const newRoute = route.slice(0, i)
+          .concat(route.slice(i, k + 1).reverse())
+          .concat(route.slice(k + 1));
+      return newRoute;
+    },
+    // Algorithme 2-opt pour optimiser le chemin
+    twoOpt(path) {
+      let improved = true;
+      while (improved) {
+        improved = false;
+        for (let i = 1; i < path.length - 1; i++) {
+          for (let k = i + 1; k < path.length; k++) {
+            const newPath = this.twoOptSwap(path, i, k);
+            if (this.getTotalDistance(newPath) < this.getTotalDistance(path)) {
+              path = newPath;
+              improved = true;
+            }
+          }
+        }
+      }
+      return path;
     }
   },
   mounted() {
@@ -112,22 +154,30 @@ export default {
     let currentPoint = departure;
     const path = [];
     const visited = [];
+    let totalDistance = 0;
 
     while (visited.length < coordinates.length) {
       const nearestNeighbor = this.findNearestNeighbor(coordinates, currentPoint, visited);
       if (nearestNeighbor) {
+        const distance = this.haversineDistance(currentPoint, nearestNeighbor);
         visited.push(coordinates.indexOf(nearestNeighbor));
-        path.push([currentPoint, nearestNeighbor]);
+        path.push([currentPoint, nearestNeighbor, distance]);
+        totalDistance += distance;  // Ajout de la distance à la distance totale
         currentPoint = nearestNeighbor;
       } else {
         break;
       }
     }
 
-    console.log("Chemin des plus proches voisins successifs : ", path);
+    // Optimisation du chemin avec 2-opt
+    let optimizedPath = path.slice();
+    optimizedPath = this.twoOpt(optimizedPath);
 
-    // Génération des polylines pour visualiser le chemin
-    this.generatePath(map, path);
+    // Stocker la distance totale optimisée dans le data de Vue pour l'affichage
+    this.totalDistance = this.getTotalDistance(optimizedPath);
+
+    // Génération des polylines pour visualiser le chemin optimisé
+    this.generatePath(map, optimizedPath);
   }
 };
 </script>
