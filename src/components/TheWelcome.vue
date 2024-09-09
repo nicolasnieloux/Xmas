@@ -1,5 +1,9 @@
 <template>
   <div id="map" style="height: 800px;"></div>
+  <div>
+    <div id="map" style="height: 800px;"></div>
+    <div>Total Distance: {{ totalDistance }} km</div>
+  </div>
 </template>
 
 
@@ -9,6 +13,11 @@ import 'leaflet/dist/leaflet.css';
 
 export default {
   name: 'MapComponent',
+  data() {
+    return {
+      totalDistance: 0
+    };
+  },
   methods: {
     // Méthode pour calculer la distance haversine entre deux coordonnées GPS
     haversineDistance(coord1, coord2) {
@@ -53,6 +62,12 @@ export default {
 
         L.polyline([start, end], { color: 'blue' }).addTo(map);
       });
+    },
+    // Méthode pour calculer la distance totale
+    calculateTotalDistance(path) {
+      return path.reduce((total, [start, end]) => {
+        return total + this.haversineDistance(start, end);
+      }, 0);
     }
   },
   mounted() {
@@ -124,13 +139,15 @@ export default {
       }
     }
 
-    console.log("Chemin des plus proches voisins successifs : ", path);
-
-    // Génération des polylines pour visualiser le chemin
+    // Générer le chemin et ajouter les marqueurs/polylines à la carte
     this.generatePath(map, path);
+
+    // Calculer et afficher la distance totale
+    this.totalDistance = this.calculateTotalDistance(path).toFixed(2);
   }
-};
+}
 </script>
+
 
 <style>
 #map {
