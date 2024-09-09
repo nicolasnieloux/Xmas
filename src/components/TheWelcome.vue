@@ -1,9 +1,7 @@
 <template>
+  <div id="map" style="height: 800px;"></div>
   <div>
-    <div id="map" style="height: 800px;"></div>
-    <div id="distance">
-      <h3>Distance totale parcourue : {{ totalDistance.toFixed(2) }} km</h3>
-    </div>
+    <div>Total Distance: {{ totalDistance }} km</div>
   </div>
 </template>
 
@@ -15,7 +13,8 @@ export default {
   name: 'MapComponent',
   data() {
     return {
-      totalDistance: 0 // Initialisation de la distance totale
+      totalDistance: 0,
+      path: []
     };
   },
   methods: {
@@ -36,60 +35,46 @@ export default {
 
       return R * c;
     },
-    // Méthode pour trouver le plus proche voisin d'un point donné non visité
-    findNearestNeighbor(coordinates, point, visited) {
-      const distances = coordinates
-          .map((coord, index) => ({
-            index: index,
-            distance: this.haversineDistance(point, coord)
-          }))
-          .filter(neighbor => !visited.includes(neighbor.index));
-
-      distances.sort((a, b) => a.distance - b.distance);
-
-      return distances.length ? coordinates[distances[0].index] : null;
-    },
-    // Méthode pour générer le polyligne du chemin
+    // Générer le polyligne du chemin
     generatePath(map, path) {
       path.forEach((segment, index) => {
-        const [start, end, distance] = segment;
-
-        // Ajouter la polyline pour chaque segment du chemin
-        const polyline = L.polyline([start, end], { color: 'blue' }).addTo(map);
-
-        // Afficher la distance sur la polyline
-        polyline.bindPopup(`Distance: ${distance.toFixed(2)} km`).openPopup();
-
-        L.marker(end, {
-          icon: L.icon({
-            iconUrl: 'https://leafletjs.com/examples/custom-icons/leaf-green.png',
-            shadowUrl: 'https://leafletjs.com/examples/custom-icons/leaf-shadow.png'
-          })
-        }).addTo(map).bindPopup(`<b>Point ${index + 1}</b>`);
+        const [start, end] = segment;
+        L.polyline([start, end], { color: 'blue' }).addTo(map);
       });
     },
-    // Méthode pour obtenir la distance totale d'un chemin
-    getTotalDistance(path) {
-      return path.reduce((total, [start, end, distance]) => total + distance, 0);
+    // Calculer la distance totale
+    calculateTotalDistance(path) {
+      return path.reduce((total, point, index) => {
+        if (index === path.length - 1) return total; // Pas de retour au point de départ
+        return total + this.haversineDistance(point, path[index + 1]);
+      }, 0);
     },
-    // Méthode pour effectuer un swap 2-opt et retourner la nouvelle version du chemin
-    twoOptSwap(route, i, k) {
-      const newRoute = route.slice(0, i)
-          .concat(route.slice(i, k + 1).reverse())
-          .concat(route.slice(k + 1));
-      return newRoute;
-    },
-    // Algorithme 2-opt pour optimiser le chemin
+    // Algorithme 2-opt pour optimiser le trajet
     twoOpt(path) {
-      let improved = true;
-      while (improved) {
-        improved = false;
+      const swap = (path, i, k) => {
+        const newPath = path.slice(0, i)
+            .concat(path.slice(i, k + 1).reverse())
+            .concat(path.slice(k + 1));
+        return newPath;
+      };
+
+      const totalDistance = (path) => {
+        let dist = 0;
+        for (let i = 0; i < path.length - 1; i++) {
+          dist += this.haversineDistance(path[i], path[i + 1]);
+        }
+        return dist; // Pas de retour au point de départ
+      };
+
+      let improvement = true;
+      while (improvement) {
+        improvement = false;
         for (let i = 1; i < path.length - 1; i++) {
           for (let k = i + 1; k < path.length; k++) {
-            const newPath = this.twoOptSwap(path, i, k);
-            if (this.getTotalDistance(newPath) < this.getTotalDistance(path)) {
+            const newPath = swap(path, i, k);
+            if (totalDistance(newPath) < totalDistance(path)) {
               path = newPath;
-              improved = true;
+              improvement = true;
             }
           }
         }
@@ -136,55 +121,75 @@ export default {
 
     // Point de départ
     const departure = [45.533329, 5.9];
+    coordinates.unshift(departure);
 
     // Ajout du marqueur pour le point de départ
     L.marker(departure, {
-      icon: L.icon({
-        iconUrl: 'https://leafletjs.com/examples/custom-icons/leaf-red.png',
-        shadowUrl: 'https://leafletjs.com/examples/custom-icons/leaf-shadow.png'
+      icon: L.divIcon({
+        className: 'custom-div-icon',
+        html: `<img class="leaflet-marker-icon" src="https://leafletjs.com/examples/custom-icons/leaf-red.png" /><div class="number-marker" style="color: white;">0</div>`,
+        iconSize: [30, 42],
+        iconAnchor: [15, 42]
       })
     }).addTo(map).bindPopup("<b>Point de départ</b><br />Voici votre point de départ.").openPopup();
 
     // Calcul des limites pour centrer la carte
-    const allCoordinates = [...coordinates, departure];
-    const bounds = L.latLngBounds(allCoordinates);
+    const bounds = L.latLngBounds(coordinates);
     map.fitBounds(bounds);
 
-    // Algorithme pour trouver successivement les plus proches voisins
-    let currentPoint = departure;
-    const path = [];
-    const visited = [];
-    let totalDistance = 0;
+    // Générer un chemin initial
+    let path = coordinates.slice(1); // Exclure le point de départ du chemin initial
 
-    while (visited.length < coordinates.length) {
-      const nearestNeighbor = this.findNearestNeighbor(coordinates, currentPoint, visited);
-      if (nearestNeighbor) {
-        const distance = this.haversineDistance(currentPoint, nearestNeighbor);
-        visited.push(coordinates.indexOf(nearestNeighbor));
-        path.push([currentPoint, nearestNeighbor, distance]);
-        totalDistance += distance;  // Ajout de la distance à la distance totale
-        currentPoint = nearestNeighbor;
-      } else {
-        break;
+    // Appliquer l'algorithme 2-opt pour optimiser le chemin
+    path = this.twoOpt(path);
+
+    // Ajouter le point de départ au début du chemin
+    path.unshift(departure);
+
+    // Mettre à jour la distance totale
+    this.totalDistance = this.calculateTotalDistance(path);
+
+    // Générer le polyligne sur la carte
+    path.forEach((point, i) => {
+      L.marker(point, {
+        icon: L.divIcon({
+          className: 'custom-div-icon',
+          html: `<img class="leaflet-marker-icon" src="${i === 0 ? 'https://leafletjs.com/examples/custom-icons/leaf-red.png' : 'https://leafletjs.com/examples/custom-icons/leaf-green.png'}" /><div class="number-marker" style="color: white;">${i}</div>`,
+          iconSize: [30, 42],
+          iconAnchor: [15, 42]
+        })
+      }).addTo(map);
+
+      if (i < path.length - 1) {
+        L.polyline([point, path[i + 1]], { color: 'blue' }).addTo(map);
       }
-    }
+    });
 
-    // Optimisation du chemin avec 2-opt
-    let optimizedPath = path.slice();
-    optimizedPath = this.twoOpt(optimizedPath);
-
-    // Stocker la distance totale optimisée dans le data de Vue pour l'affichage
-    this.totalDistance = this.getTotalDistance(optimizedPath);
-
-    // Génération des polylines pour visualiser le chemin optimisé
-    this.generatePath(map, optimizedPath);
+    this.path = path; // Enregistrer le chemin pour une utilisation future si nécessaire
   }
 };
 </script>
 
 <style>
 #map {
+  height: 800px;
   width: 800px;
-  height: 800px; /* Augmentez ici la hauteur de la carte */
+}
+.custom-div-icon {
+  position: relative;
+}
+.number-marker {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  font-size: 14px;
+  font-weight: bold;
+  background: black;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 </style>
