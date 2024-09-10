@@ -37,7 +37,7 @@ export default {
     },
     // Générer le polyligne du chemin
     generatePath(map, path) {
-      path.forEach((segment, index) => {
+      path.forEach((segment) => {
         const [start, end] = segment;
         L.polyline([start, end], { color: 'blue' }).addTo(map);
       });
@@ -52,10 +52,9 @@ export default {
     // Algorithme 2-opt pour optimiser le trajet
     twoOpt(path) {
       const swap = (path, i, k) => {
-        const newPath = path.slice(0, i)
+        return path.slice(0, i)
             .concat(path.slice(i, k + 1).reverse())
             .concat(path.slice(k + 1));
-        return newPath;
       };
 
       const totalDistance = (path) => {
@@ -119,12 +118,8 @@ export default {
       [45.171244, 5.689872]
     ];
 
-    // Point de départ
-    const departure = [45.533329, 5.9];
-    coordinates.unshift(departure);
-
     // Ajout du marqueur pour le point de départ
-    L.marker(departure, {
+    L.marker(coordinates[0], {
       icon: L.divIcon({
         className: 'custom-div-icon',
         html: `<img class="leaflet-marker-icon" src="https://leafletjs.com/examples/custom-icons/leaf-red.png" /><div class="number-marker" style="color: white;">0</div>`,
@@ -144,7 +139,7 @@ export default {
     path = this.twoOpt(path);
 
     // Ajouter le point de départ au début du chemin
-    path.unshift(departure);
+    path.unshift(coordinates[0]);
 
     // Mettre à jour la distance totale
     this.totalDistance = this.calculateTotalDistance(path);
@@ -174,9 +169,6 @@ export default {
 #map {
   height: 800px;
   width: 800px;
-}
-.custom-div-icon {
-  position: relative;
 }
 .number-marker {
   position: absolute;
