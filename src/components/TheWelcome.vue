@@ -1,7 +1,7 @@
 <template>
   <div id="map" style="height: 800px;"></div>
   <div>
-    <h1>Tri par la Colonie de Fourmis</h1>
+    <h1>Tri par Algorithme Génétique</h1>
     <div>Distance Totale : {{ totalDistance }} km</div>
   </div>
 </template>
@@ -10,114 +10,97 @@
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-class AntColonyOptimization {
-  constructor(graph, numAnts, maxIterations, alpha, beta, evaporation) {
+class GeneticAlgorithm {
+  constructor(graph, populationSize, maxGenerations, mutationRate) {
     this.graph = graph;
-    this.numAnts = numAnts;
-    this.maxIterations = maxIterations;
-    this.alpha = alpha;
-    this.beta = beta;
-    this.evaporation = evaporation;
-    this.pheromone = this.initializePheromone(graph.length);
+    this.populationSize = populationSize;
+    this.maxGenerations = maxGenerations;
+    this.mutationRate = mutationRate;
+    this.population = this.initPopulation();
   }
 
-  initializePheromone(size) {
-    const pheromone = [];
-    for (let i = 0; i < size; i++) {
-      pheromone[i] = new Array(size).fill(1.0);
+  initPopulation() {
+    const population = [];
+    for (let i = 0; i < this.populationSize; i++) {
+      const tour = Array.from({ length: this.graph.length }, (_, index) => index);
+      this.shuffle(tour);
+      population.push(tour);
     }
-    return pheromone;
+    return population;
+  }
+
+  shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
   }
 
   optimize() {
-    let bestTour = null;
-    let bestLength = Infinity;
+    for (let generation = 0; generation < this.maxGenerations; generation++) {
+      this.population = this.population
+          .map(individual => ({ tour: individual, fitness: this.fitness(individual) }))
+          .sort((a, b) => a.fitness - b.fitness)
+          .map(individual => individual.tour);
 
-    for (let iteration = 0; iteration < this.maxIterations; iteration++) {
-      const ants = this.createAnts();
-      for (const ant of ants) {
-        this.walk(ant);
-        const tourLength = this.length(ant);
-        if (tourLength < bestLength) {
-          bestLength = tourLength;
-          bestTour = ant.slice();
+      const matingPool = this.population.slice(0, this.populationSize / 2);
+
+      // Crossover
+      for (let i = 0; i < this.populationSize; i++) {
+        const parent1 = matingPool[Math.floor(Math.random() * matingPool.length)];
+        const parent2 = matingPool[Math.floor(Math.random() * matingPool.length)];
+        this.population[i] = this.crossover(parent1, parent2);
+      }
+
+      // Mutation
+      this.population.forEach(individual => {
+        if (Math.random() < this.mutationRate) {
+          this.mutate(individual);
         }
-      }
-      this.updatePheromone(ants);
+      });
     }
 
-    return { bestTour, bestLength };
+    const bestIndividual = this.population.reduce((best, individual) => {
+      return this.fitness(individual) < this.fitness(best) ? individual : best;
+    });
+
+    return { bestTour: bestIndividual, bestLength: this.fitness(bestIndividual) };
   }
 
-  createAnts() {
-    const ants = [];
-    for (let i = 0; i < this.numAnts; i++) {
-      ants.push(this.createAnt());
+  fitness(tour) {
+    let totalDistance = 0;
+    for (let i = 0; i < tour.length - 1; i++) {
+      totalDistance += this.graph[tour[i]][tour[i + 1]];
     }
-    return ants;
+    return totalDistance;
   }
 
-  createAnt() {
-    const tour = new Array(this.graph.length).fill(null);
-    tour[0] = Math.floor(Math.random() * this.graph.length);
-    for (let i = 1; i < this.graph.length; i++) {
-      tour[i] = this.selectNext(tour[i - 1], tour);
-    }
-    return tour;
-  }
+  crossover(parent1, parent2) {
+    const start = Math.floor(Math.random() * parent1.length);
+    const end = start + Math.floor(Math.random() * (parent1.length - start));
+    const child = Array(parent1.length).fill(null);
 
-  selectNext(current, tour) {
-    const probabilities = [];
-    for (let i = 0; i < this.graph.length; i++) {
-      if (tour.includes(i)) {
-        probabilities.push(0);
-      } else {
-        const pheromone = this.pheromone[current][i] ** this.alpha;
-        const heuristic = (1.0 / this.graph[current][i]) ** this.beta;
-        probabilities.push(pheromone * heuristic);
-      }
+    for (let i = start; i < end; i++) {
+      child[i] = parent1[i];
     }
-    const sum = probabilities.reduce((a, b) => a + b, 0);
-    probabilities.forEach((v, i) => probabilities[i] = v / sum);
 
-    let pSum = 0;
-    const rand = Math.random();
-    for (let i = 0; i < probabilities.length; i++) {
-      pSum += probabilities[i];
-      if (rand < pSum) {
-        return i;
+    let current = 0;
+    for (let i = 0; i < parent2.length; i++) {
+      if (!child.includes(parent2[i])) {
+        while (child[current] !== null) {
+          current++;
+        }
+        child[current] = parent2[i];
       }
     }
-    return probabilities.length - 1;
+
+    return child;
   }
 
-  walk(tour) {
-    for (let i = 1; i < tour.length; i++) {
-      tour[i] = this.selectNext(tour[i - 1], tour);
-    }
-  }
-
-  length(tour) {
-    let length = 0;
-    for (let i = 1; i < tour.length; i++) {
-      length += this.graph[tour[i - 1]][tour[i]];
-    }
-    length += this.graph[tour[tour.length - 1]][tour[0]];
-    return length;
-  }
-
-  updatePheromone(ants) {
-    this.pheromone.forEach((row, i) => row.forEach((value, j) => { this.pheromone[i][j] *= (1.0 - this.evaporation); }));
-
-    for (const ant of ants) {
-      const deltaPheromone = 1.0 / this.length(ant);
-      for (let i = 1; i < ant.length; i++) {
-        this.pheromone[ant[i - 1]][ant[i]] += deltaPheromone;
-        this.pheromone[ant[i]][ant[i - 1]] += deltaPheromone;
-      }
-      this.pheromone[ant[ant.length - 1]][ant[0]] += deltaPheromone;
-      this.pheromone[ant[0]][ant[ant.length - 1]] += deltaPheromone;
-    }
+  mutate(tour) {
+    const i = Math.floor(Math.random() * tour.length);
+    const j = Math.floor(Math.random() * tour.length);
+    [tour[i], tour[j]] = [tour[j], tour[i]];
   }
 }
 
@@ -156,7 +139,7 @@ export default {
         return total + this.haversineDistance(point, path[index + 1]);
       }, 0);
     },
-    antColonyOptimization(path) {
+    geneticAlgorithmOptimization(path) {
       const graph = [];
       for (let i = 0; i < path.length; i++) {
         graph[i] = [];
@@ -165,8 +148,8 @@ export default {
         }
       }
 
-      const aco = new AntColonyOptimization(graph, 10, 100, 1.0, 5.0, 0.5);
-      const result = aco.optimize();
+      const ga = new GeneticAlgorithm(graph, 20, 100, 0.1);
+      const result = ga.optimize();
       const optimizedPath = result.bestTour.map(i => path[i]);
       this.totalDistance = result.bestLength;
       return optimizedPath;
@@ -206,7 +189,7 @@ export default {
       [45.171244, 5.689872]
     ];
 
-    this.path = this.antColonyOptimization(coordinates);
+    this.path = this.geneticAlgorithmOptimization(coordinates);
     this.totalDistance = this.calculateTotalDistance(this.path);
 
     this.path.forEach((coord, index) => {
