@@ -1,6 +1,7 @@
 <template>
   <div id="map" style="height: 800px;"></div>
   <div>
+    <h1>Tri par insertion</h1>
     <div id="map" style="height: 800px;"></div>
     <div>Total Distance: {{ totalDistance }} km</div>
   </div>
