@@ -1,14 +1,17 @@
 <template>
-  <div id="map" style="height: 800px;"></div>
   <div>
-    <h1>Tri par Algorithme Génétique</h1>
-    <div>Distance Totale : {{ totalDistance }} km</div>
+    <div id="map" style="height: 800px;"></div>
+    <div>
+      <h1>Tri par Algorithme Génétique</h1>
+      <div>Distance Totale : {{ totalDistance }} km</div>
+    </div>
   </div>
 </template>
 
 <script>
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import Papa from 'papaparse';
 
 class GeneticAlgorithm {
   constructor(graph, populationSize, maxGenerations, mutationRate) {
@@ -123,88 +126,49 @@ export default {
       const lat1 = toRad(coord1[0]);
       const lat2 = toRad(coord2[0]);
 
-      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2);
+      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2);
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
       return R * c;
     },
-    generatePath(map, path) {
-      const latlngs = path.map(coord => L.latLng(coord[0], coord[1]));
-      L.polyline(latlngs, { color: 'blue' }).addTo(map);
-    },
-    calculateTotalDistance(path) {
-      return path.reduce((total, point, index) => {
-        if (index === path.length - 1) return total;
-        return total + this.haversineDistance(point, path[index + 1]);
-      }, 0);
-    },
-    geneticAlgorithmOptimization(path) {
-      const graph = [];
-      for (let i = 0; i < path.length; i++) {
-        graph[i] = [];
-        for (let j = 0; j < path.length; j++) {
-          graph[i][j] = this.haversineDistance(path[i], path[j]);
+    async loadCsvData() {
+      try {
+        const response = await fetch('/csv/small.csv');
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
-      }
+        const csvText = await response.text();
+        const parsedData = Papa.parse(csvText, { header: true, dynamicTyping: true });
 
-      const ga = new GeneticAlgorithm(graph, 20, 100, 0.1);
-      const result = ga.optimize();
-      const optimizedPath = result.bestTour.map(i => path[i]);
-      this.totalDistance = result.bestLength;
-      return optimizedPath;
+        const coordinates = parsedData.data.map(entry => [entry.latitude, entry.longitude]);
+
+        this.drawMap(coordinates);
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    drawMap(coordinates) {
+      const map = L.map('map').setView(coordinates[0], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      const path = [];
+      coordinates.forEach((coord, idx) => {
+        const marker = L.marker(coord).addTo(map);
+        path.push(coord);
+
+        if (idx > 0) {
+          const previousCoord = coordinates[idx - 1];
+          const line = L.polyline([previousCoord, coord], { color: 'blue' }).addTo(map);
+        }
+      });
+
+      this.path = path;
     }
   },
   mounted() {
-    const map = L.map('map');
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributeurs'
-    }).addTo(map);
-
-    const coordinates = [
-      [45.171112, 5.695952],
-      [45.183152, 5.699386],
-      [45.174115, 5.711106],
-      [45.176123, 5.722083],
-      [45.184301, 5.719791],
-      [45.184252, 5.730698],
-      [45.170588, 5.716664],
-      [45.193702, 5.691028],
-      [45.165641, 5.739938],
-      [45.178718, 5.744940],
-      [45.176857, 5.762518],
-      [45.188512, 5.767172],
-      [45.174017, 5.706729],
-      [45.174458, 5.687902],
-      [45.185110, 5.733667],
-      [45.185702, 5.734507],
-      [45.184726, 5.734666],
-      [45.184438, 5.733735],
-      [45.184902, 5.735256],
-      [45.174812, 5.698095],
-      [45.169851, 5.695723],
-      [45.180943, 5.698965],
-      [45.176205, 5.692165],
-      [45.171244, 5.689872]
-    ];
-
-    this.path = this.geneticAlgorithmOptimization(coordinates);
-    this.totalDistance = this.calculateTotalDistance(this.path);
-
-    this.path.forEach((coord, index) => {
-      L.marker(coord, {
-        icon: L.divIcon({
-          className: 'custom-icon',
-          html: `<div class="number-marker" style="background-color: blue; color: white;">${index}</div>`,
-          iconSize: [25, 25]
-        })
-      }).addTo(map)
-          .bindPopup(`<b>Point ${index}</b><br>Lat: ${coord[0]}, Lng: ${coord[1]}`);
-    });
-
-    this.generatePath(map, this.path);
-    map.fitBounds(this.path);
+    this.loadCsvData();
   }
 };
 </script>
