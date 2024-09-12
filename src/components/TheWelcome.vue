@@ -47,9 +47,20 @@ async function loadCsvData() {
     const csvText = await response.text();
     const parsedData = Papa.parse(csvText, { header: true, dynamicTyping: true });
 
-    const coordinates = parsedData.data.map(entry =>
-        [parseFloat(entry.latitude), parseFloat(entry.longitude)]
-    );
+    const coordinates = parsedData.data.map(entry => {
+      const lat = parseFloat(entry.latitude);
+      const lon = parseFloat(entry.longitude);
+      if (!isNaN(lat) && !isNaN(lon)) {
+        return [lat, lon];
+      } else {
+        console.warn('Invalid coordinates:', entry); // Logs invalid entries for further inspection
+        return null;
+      }
+    }).filter(coord => coord !== null); // Filter out any null entries
+
+    console.log('Coordinates:', coordinates); // Debug log
+
+    drawMap(coordinates);
 
     console.log('Coordinates:', coordinates); // Debug log
 
@@ -80,12 +91,12 @@ function drawMap(coordinates) {
       console.log('Previous Coord:', previousCoord, 'Current Coord:', coord); // Debug log
       const distance = haversineDistance(previousCoord, coord);
       console.log('Calculated Distance:', distance); // Debug log
-      localTotalDistance += distance;
+     console.log(localTotalDistance += distance);
     }
   });
 
   path.value = localPath;
-  totalDistance.value = localTotalDistance.toFixed(2); // Round to 2 decimal places for better readability
+  totalDistance.value = parseFloat(localTotalDistance.toFixed(2)); // Round to 2 decimal places for better readability
   console.log('Total Distance:', totalDistance.value); // Debug log
 }
 
