@@ -83,7 +83,7 @@ function drawMap(coordinates) {
 function runGeneticAlgorithm(coordinates) {
   const populationSize = 100;
   const numGenerations = 200;
-  const mutationRate = 0.01;
+  const mutationRate = 0.001;
 
   const numCities = coordinates.length;
 
